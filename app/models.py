@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+﻿from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 from enum import Enum
@@ -18,22 +18,43 @@ class Evidence(BaseModel):
 
 class TransactionIn(BaseModel):
     transaction_id: str
-    card_id: str
-    amount: float
-    currency: str = "INR"
-    merchant_id: str
-    merchant_country: str
-    customer_country: str
-    timestamp: datetime
+    amount_usd: float
+    merchant_category: str
+    card_type: str
+    auth_method: str
+    channel: str
+    device_type: str
+    is_foreign_transaction: bool
+    hours_since_last_txn: float
+    txn_count_last_24h: int
+    distance_from_home_km: float
+    card_age_months: int
+    customer_age: int
+    account_balance_usd: float
+    is_new_merchant: bool
+    used_vpn: bool
+    ip_country_mismatch: bool
+    billing_shipping_mismatch: bool
+    cvv_retry_count: int
+    velocity_score: float
+    time_of_day_hour: int
+    day_of_week: int
+    is_ai_generated_scam_attempt: bool
+    merchant_risk_score: float
+    prior_disputes: int
 
 
 class FeatureVector(BaseModel):
     transaction_id: str
-    velocity_1h: int
-    refund_rate_30d: float
+    velocity_flag: bool
     geo_mismatch: bool
-    settlement_delay_hours: float
-    amount_zscore: float
+    device_risk: bool
+    new_merchant_risk: bool
+    cvv_risk: bool
+    prior_dispute_risk: bool
+    high_amount_ratio: bool
+    merchant_risk_score: float
+    ai_scam_flag: bool
 
 
 class DriftResult(BaseModel):
