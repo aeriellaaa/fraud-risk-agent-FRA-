@@ -5,20 +5,19 @@ Rule-based scorer (Phase 1). Swap for LightGBM in Phase 2 -- the output
 shape (ScoreResult with an evidence list) stays the same so Agent 3
 does not need to change when the scorer changes underneath it.
 
-Evidence weights below reflect how discriminative each signal actually
-is in credit_card_fraud_2026.csv (see features.py for the underlying
-fraud-rate/mean comparisons), not arbitrary guesses. Roughly:
-  strong  (0.6-0.7): geo_mismatch, cvv_risk, ai_scam_flag
-  medium  (0.4-0.5): velocity_flag, device_risk, merchant_risk high
-  weak    (0.2-0.3): new_merchant_risk, prior_dispute_risk, high_amount_ratio
+Accepts an optional DriftResult from Agent 1 -- when present and above
+threshold, it becomes its own weighted evidence signal ("pattern_evasion"),
+which is how Agent 1's output actually flows into the final score,
+per the original architecture (Agent 1 -> Agent 2 -> Agent 3).
 """
 
-from app.models import FeatureVector, ScoreResult, Evidence, EvidenceDirection
+from app.models import FeatureVector, ScoreResult, Evidence, EvidenceDirection, DriftResult
 
 WEIGHTS = {
     "geo_mismatch": 0.70,
     "cvv_risk": 0.60,
     "ai_scam_flag": 0.75,
+    "pattern_evasion": 0.50,
     "velocity_flag": 0.45,
     "device_risk": 0.45,
     "merchant_risk_high": 0.45,
@@ -28,17 +27,18 @@ WEIGHTS = {
 }
 
 MERCHANT_RISK_HIGH = 47.3
-MERCHANT_RISK_LOW = 15.0  # used only to generate contradicting evidence
+MERCHANT_RISK_LOW = 15.0
+DRIFT_SCORE_THRESHOLD = 0.3
 
 
-def score_transaction(features: FeatureVector) -> ScoreResult:
+def score_transaction(features: FeatureVector, drift: DriftResult | None = None) -> ScoreResult:
     evidence: list[Evidence] = []
     triggered_weight = 0.0
     total_weight = sum(WEIGHTS.values())
 
-    def add_supporting(key: str, description: str) -> None:
+    def add_supporting(key: str, description: str, weight: float | None = None) -> None:
         nonlocal triggered_weight
-        w = WEIGHTS[key]
+        w = weight if weight is not None else WEIGHTS[key]
         triggered_weight += w
         evidence.append(Evidence(
             signal=key,
@@ -66,9 +66,13 @@ def score_transaction(features: FeatureVector) -> ScoreResult:
     if features.high_amount_ratio:
         add_supporting("high_amount_ratio", "Transaction amount is large relative to account balance")
 
-    # Contradicting evidence -- gives Agent 3's contradiction check real
-    # material to work with, instead of only ever seeing one-directional
-    # evidence.
+    if drift is not None and drift.drift_score >= DRIFT_SCORE_THRESHOLD:
+        add_supporting(
+            "pattern_evasion",
+            f"Agent 1 flagged pattern/evasion signals: {'; '.join(drift.drift_signals)}",
+            weight=WEIGHTS["pattern_evasion"] * drift.drift_score,
+        )
+
     if features.merchant_risk_score < MERCHANT_RISK_LOW:
         evidence.append(Evidence(
             signal="merchant_risk_low",
