@@ -1,10 +1,7 @@
 ﻿"""
 Agent 3 -- Reviewer Agent (Evidence-Strength Check), recalibrated for the
-ML scorer. Evidence strength is now a raw SHAP contribution magnitude
-(typically 0.005-0.15), NOT a 0-1 relative score like the old rule-based
-version -- every threshold below is scaled accordingly, grounded in the
-actual training run (scripts/train_model.py): cost-optimal threshold
-0.02, max observed test-set score 0.28.
+ML scorer. Evidence strength is a raw SHAP contribution magnitude
+(typically 0.005-0.15), NOT a 0-1 relative score.
 """
 
 from app.models import ScoreResult, ReviewResult, ReviewVerdict, EvidenceDirection
@@ -25,8 +22,8 @@ SIGNAL_CATEGORY = {
     "pattern_evasion": "pattern_evasion",
 }
 
-HIGH_SCORE_THRESHOLD = 0.02   # matches the cost-optimal decision boundary from training
-DOWNGRADE_THRESHOLD = -0.05   # small: evidence magnitudes here are tiny (~0.005-0.15)
+HIGH_SCORE_THRESHOLD = 0.02
+DOWNGRADE_THRESHOLD = -0.05
 
 
 def review_score(score_result: ScoreResult) -> ReviewResult:
@@ -58,25 +55,33 @@ def review_score(score_result: ScoreResult) -> ReviewResult:
         adjustment -= penalty
         reasons.append(
             f"{len(contradicting)} contradicting signal(s) found "
-            f"(total SHAP magnitude {contradiction_strength:.4f}) -- confidence downgraded."
+            f"(total SHAP magnitude {contradiction_strength:.4f})."
         )
 
     adjustment = max(-1.0, min(0.0, adjustment))
 
+    # Verdict decided first, then the reason string is built to always
+    # match it -- previously, a contradiction-check reason could get
+    # added ahead of the "no supporting evidence" explanation, making
+    # an insufficient_evidence verdict read like a confidence_downgraded
+    # one. Fixed by prefixing the verdict-specific explanation always.
     if len(supporting) == 0:
         verdict = ReviewVerdict.INSUFFICIENT_EVIDENCE
-        if not reasons:
-            reasons.append("No supporting evidence found for a fraud determination.")
+        prefix = "No supporting evidence found for a fraud determination."
     elif adjustment <= DOWNGRADE_THRESHOLD:
         verdict = ReviewVerdict.CONFIDENCE_DOWNGRADED
+        prefix = "Confidence downgraded:"
     else:
         verdict = ReviewVerdict.CONFIDENCE_UPHELD
+        prefix = "Confidence upheld."
         if not reasons:
             reasons.append("Evidence count, diversity, and consistency all support the score as computed.")
+
+    full_reason = prefix + (" " + "; ".join(reasons) if reasons else "")
 
     return ReviewResult(
         transaction_id=score_result.transaction_id,
         verdict=verdict,
         confidence_adjustment=round(adjustment, 4),
-        reason="; ".join(reasons),
+        reason=full_reason,
     )
