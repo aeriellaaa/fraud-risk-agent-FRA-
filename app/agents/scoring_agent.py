@@ -1,13 +1,11 @@
 ﻿"""
 Agent 2 -- ML-based scoring, using the trained Random Forest + SHAP.
 
-Replaces the Phase 1 rule-based scorer. Loads model.pkl/encoders.pkl once
-at import time (not per-request) for performance.
-
-IMPORTANT: this model's probability outputs are compressed (max ~0.28 on
-held-out test data, per scripts/train_model.py) -- NOT well-calibrated
-0-1 probabilities. Agent 3 and the Decision Router thresholds must be
-read relative to this compressed range, not assumed to be on a 0-1 scale.
+Evidence strength is the RAW absolute SHAP contribution (not normalized
+to the top signal within a transaction). This keeps strength directly
+comparable to the model's score itself and to other transactions --
+normalizing per-transaction was inflating minor SHAP noise into
+misleadingly large "contradiction" signals.
 """
 
 import pickle
@@ -39,33 +37,25 @@ BOOLEAN_COLS = ["is_foreign_transaction", "is_new_merchant", "used_vpn", "ip_cou
                 "billing_shipping_mismatch", "is_ai_generated_scam_attempt"]
 
 FEATURE_DESCRIPTIONS = {
-    "amount_usd": "Transaction amount",
-    "merchant_category": "Merchant category",
-    "card_type": "Card type",
-    "auth_method": "Authentication method",
-    "channel": "Transaction channel",
-    "device_type": "Device type",
+    "amount_usd": "Transaction amount", "merchant_category": "Merchant category",
+    "card_type": "Card type", "auth_method": "Authentication method",
+    "channel": "Transaction channel", "device_type": "Device type",
     "is_foreign_transaction": "Foreign transaction flag",
     "hours_since_last_txn": "Time since last transaction",
     "txn_count_last_24h": "Transaction count in last 24h",
-    "distance_from_home_km": "Distance from home",
-    "card_age_months": "Card age",
-    "customer_age": "Customer age",
-    "account_balance_usd": "Account balance",
-    "is_new_merchant": "First transaction with this merchant",
-    "used_vpn": "VPN usage",
+    "distance_from_home_km": "Distance from home", "card_age_months": "Card age",
+    "customer_age": "Customer age", "account_balance_usd": "Account balance",
+    "is_new_merchant": "First transaction with this merchant", "used_vpn": "VPN usage",
     "ip_country_mismatch": "IP/country mismatch",
     "billing_shipping_mismatch": "Billing/shipping mismatch",
-    "cvv_retry_count": "CVV retry count",
-    "velocity_score": "Velocity score",
-    "time_of_day_hour": "Time of day",
-    "day_of_week": "Day of week",
+    "cvv_retry_count": "CVV retry count", "velocity_score": "Velocity score",
+    "time_of_day_hour": "Time of day", "day_of_week": "Day of week",
     "is_ai_generated_scam_attempt": "AI-generated scam attempt flag",
-    "merchant_risk_score": "Merchant risk score",
-    "prior_disputes": "Prior disputes on record",
+    "merchant_risk_score": "Merchant risk score", "prior_disputes": "Prior disputes on record",
 }
 
 TOP_N_EVIDENCE = 6
+MIN_CONTRIBUTION = 0.005
 
 
 def _encode_transaction(txn: TransactionIn) -> np.ndarray:
@@ -100,17 +90,16 @@ def score_transaction(txn: TransactionIn, drift: DriftResult | None = None) -> S
     )[:TOP_N_EVIDENCE]
 
     evidence: list[Evidence] = []
-    max_abs = max(abs(c) for _, c in ranked) if ranked else 1.0
     for feature, contribution in ranked:
-        if abs(contribution) < 1e-6:
+        if abs(contribution) < MIN_CONTRIBUTION:
             continue
-        strength = min(1.0, abs(contribution) / max_abs) if max_abs > 0 else 0.0
+        strength = round(min(1.0, abs(float(contribution))), 4)
         direction = EvidenceDirection.SUPPORTS_FRAUD if contribution > 0 else EvidenceDirection.CONTRADICTS_FRAUD
         value = getattr(txn, feature)
         evidence.append(Evidence(
             signal=feature,
             direction=direction,
-            strength=round(strength, 4),
+            strength=strength,
             description=f"{FEATURE_DESCRIPTIONS.get(feature, feature)}: {value} "
                         f"(SHAP contribution {contribution:+.4f})",
         ))
@@ -119,7 +108,7 @@ def score_transaction(txn: TransactionIn, drift: DriftResult | None = None) -> S
         evidence.append(Evidence(
             signal="pattern_evasion",
             direction=EvidenceDirection.SUPPORTS_FRAUD,
-            strength=round(min(1.0, drift.drift_score), 4),
+            strength=round(min(1.0, drift.drift_score * 0.1), 4),
             description=f"Agent 1 flagged pattern/evasion signals: {'; '.join(drift.drift_signals)}",
         ))
 
