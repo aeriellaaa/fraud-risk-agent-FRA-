@@ -11,11 +11,6 @@ router = APIRouter()
 
 @router.post("/transactions/{transaction_id}/process")
 def process_full_pipeline(transaction_id: str):
-    """
-    Convenience endpoint: runs ingest-through-decision in one call.
-    Transaction must already be ingested. Useful for testing and for
-    the demo, so the full loop is one API call instead of four.
-    """
     txn = store.get_transaction(transaction_id)
     if txn is None:
         raise HTTPException(status_code=404, detail="Transaction not found -- ingest it first")
@@ -24,8 +19,7 @@ def process_full_pipeline(transaction_id: str):
     store.save_drift(drift)
     log_stage(transaction_id, "pattern_agent", "agent_1", {"drift": drift.model_dump()})
 
-    features = store.get_features(transaction_id)
-    score = score_transaction(features, drift=drift)
+    score = score_transaction(txn, drift=drift)
     store.save_score(score)
     log_stage(transaction_id, "scoring_agent", "agent_2", {"score": score.model_dump()})
 

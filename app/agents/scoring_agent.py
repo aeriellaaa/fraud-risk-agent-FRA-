@@ -1,98 +1,131 @@
 ﻿"""
-Agent 2 -- Detection & Scoring Agent.
+Agent 2 -- ML-based scoring, using the trained Random Forest + SHAP.
 
-Rule-based scorer (Phase 1). Swap for LightGBM in Phase 2 -- the output
-shape (ScoreResult with an evidence list) stays the same so Agent 3
-does not need to change when the scorer changes underneath it.
+Replaces the Phase 1 rule-based scorer. Loads model.pkl/encoders.pkl once
+at import time (not per-request) for performance.
 
-Accepts an optional DriftResult from Agent 1 -- when present and above
-threshold, it becomes its own weighted evidence signal ("pattern_evasion"),
-which is how Agent 1's output actually flows into the final score,
-per the original architecture (Agent 1 -> Agent 2 -> Agent 3).
+IMPORTANT: this model's probability outputs are compressed (max ~0.28 on
+held-out test data, per scripts/train_model.py) -- NOT well-calibrated
+0-1 probabilities. Agent 3 and the Decision Router thresholds must be
+read relative to this compressed range, not assumed to be on a 0-1 scale.
 """
 
-from app.models import FeatureVector, ScoreResult, Evidence, EvidenceDirection, DriftResult
+import pickle
+import shap
+import numpy as np
+from pathlib import Path
 
-WEIGHTS = {
-    "geo_mismatch": 0.70,
-    "cvv_risk": 0.60,
-    "ai_scam_flag": 0.75,
-    "pattern_evasion": 0.50,
-    "velocity_flag": 0.45,
-    "device_risk": 0.45,
-    "merchant_risk_high": 0.45,
-    "new_merchant_risk": 0.30,
-    "prior_dispute_risk": 0.30,
-    "high_amount_ratio": 0.20,
+from app.models import TransactionIn, ScoreResult, Evidence, EvidenceDirection, DriftResult
+
+ARTIFACT_DIR = Path("app/ml_artifacts")
+
+with open(ARTIFACT_DIR / "model.pkl", "rb") as f:
+    _model = pickle.load(f)
+with open(ARTIFACT_DIR / "encoders.pkl", "rb") as f:
+    _encoders = pickle.load(f)
+
+_explainer = shap.TreeExplainer(_model)
+
+FEATURE_ORDER = [
+    "amount_usd", "merchant_category", "card_type", "auth_method", "channel", "device_type",
+    "is_foreign_transaction", "hours_since_last_txn", "txn_count_last_24h",
+    "distance_from_home_km", "card_age_months", "customer_age", "account_balance_usd",
+    "is_new_merchant", "used_vpn", "ip_country_mismatch", "billing_shipping_mismatch",
+    "cvv_retry_count", "velocity_score", "time_of_day_hour", "day_of_week",
+    "is_ai_generated_scam_attempt", "merchant_risk_score", "prior_disputes",
+]
+CATEGORICAL_COLS = ["merchant_category", "card_type", "auth_method", "channel", "device_type"]
+BOOLEAN_COLS = ["is_foreign_transaction", "is_new_merchant", "used_vpn", "ip_country_mismatch",
+                "billing_shipping_mismatch", "is_ai_generated_scam_attempt"]
+
+FEATURE_DESCRIPTIONS = {
+    "amount_usd": "Transaction amount",
+    "merchant_category": "Merchant category",
+    "card_type": "Card type",
+    "auth_method": "Authentication method",
+    "channel": "Transaction channel",
+    "device_type": "Device type",
+    "is_foreign_transaction": "Foreign transaction flag",
+    "hours_since_last_txn": "Time since last transaction",
+    "txn_count_last_24h": "Transaction count in last 24h",
+    "distance_from_home_km": "Distance from home",
+    "card_age_months": "Card age",
+    "customer_age": "Customer age",
+    "account_balance_usd": "Account balance",
+    "is_new_merchant": "First transaction with this merchant",
+    "used_vpn": "VPN usage",
+    "ip_country_mismatch": "IP/country mismatch",
+    "billing_shipping_mismatch": "Billing/shipping mismatch",
+    "cvv_retry_count": "CVV retry count",
+    "velocity_score": "Velocity score",
+    "time_of_day_hour": "Time of day",
+    "day_of_week": "Day of week",
+    "is_ai_generated_scam_attempt": "AI-generated scam attempt flag",
+    "merchant_risk_score": "Merchant risk score",
+    "prior_disputes": "Prior disputes on record",
 }
 
-MERCHANT_RISK_HIGH = 47.3
-MERCHANT_RISK_LOW = 15.0
-DRIFT_SCORE_THRESHOLD = 0.3
+TOP_N_EVIDENCE = 6
 
 
-def score_transaction(features: FeatureVector, drift: DriftResult | None = None) -> ScoreResult:
+def _encode_transaction(txn: TransactionIn) -> np.ndarray:
+    row = []
+    for col in FEATURE_ORDER:
+        val = getattr(txn, col)
+        if col in CATEGORICAL_COLS:
+            le = _encoders[col]
+            val = le.transform([val])[0] if val in le.classes_ else -1
+        elif col in BOOLEAN_COLS:
+            val = int(val)
+        row.append(val)
+    return np.array(row).reshape(1, -1)
+
+
+def score_transaction(txn: TransactionIn, drift: DriftResult | None = None) -> ScoreResult:
+    X = _encode_transaction(txn)
+    proba = float(_model.predict_proba(X)[0, 1])
+
+    shap_values = _explainer.shap_values(X)
+    if isinstance(shap_values, list):
+        contributions = shap_values[1][0]
+    elif shap_values.ndim == 3:
+        contributions = shap_values[0, :, 1]
+    else:
+        contributions = shap_values[0]
+
+    ranked = sorted(
+        zip(FEATURE_ORDER, contributions),
+        key=lambda x: abs(x[1]),
+        reverse=True,
+    )[:TOP_N_EVIDENCE]
+
     evidence: list[Evidence] = []
-    triggered_weight = 0.0
-    total_weight = sum(WEIGHTS.values())
-
-    def add_supporting(key: str, description: str, weight: float | None = None) -> None:
-        nonlocal triggered_weight
-        w = weight if weight is not None else WEIGHTS[key]
-        triggered_weight += w
+    max_abs = max(abs(c) for _, c in ranked) if ranked else 1.0
+    for feature, contribution in ranked:
+        if abs(contribution) < 1e-6:
+            continue
+        strength = min(1.0, abs(contribution) / max_abs) if max_abs > 0 else 0.0
+        direction = EvidenceDirection.SUPPORTS_FRAUD if contribution > 0 else EvidenceDirection.CONTRADICTS_FRAUD
+        value = getattr(txn, feature)
         evidence.append(Evidence(
-            signal=key,
+            signal=feature,
+            direction=direction,
+            strength=round(strength, 4),
+            description=f"{FEATURE_DESCRIPTIONS.get(feature, feature)}: {value} "
+                        f"(SHAP contribution {contribution:+.4f})",
+        ))
+
+    if drift is not None and drift.drift_score >= 0.3:
+        evidence.append(Evidence(
+            signal="pattern_evasion",
             direction=EvidenceDirection.SUPPORTS_FRAUD,
-            strength=w,
-            description=description,
+            strength=round(min(1.0, drift.drift_score), 4),
+            description=f"Agent 1 flagged pattern/evasion signals: {'; '.join(drift.drift_signals)}",
         ))
-
-    if features.geo_mismatch:
-        add_supporting("geo_mismatch", "IP/billing/foreign location mismatch detected")
-    if features.cvv_risk:
-        add_supporting("cvv_risk", "One or more CVV retries on this transaction")
-    if features.ai_scam_flag:
-        add_supporting("ai_scam_flag", "Transaction flagged as a likely AI-generated scam attempt")
-    if features.velocity_flag:
-        add_supporting("velocity_flag", "Transaction velocity above typical range")
-    if features.device_risk:
-        add_supporting("device_risk", "VPN usage detected on this transaction")
-    if features.merchant_risk_score > MERCHANT_RISK_HIGH:
-        add_supporting("merchant_risk_high", f"Merchant risk score {features.merchant_risk_score:.1f} is above threshold")
-    if features.new_merchant_risk:
-        add_supporting("new_merchant_risk", "First transaction with this merchant")
-    if features.prior_dispute_risk:
-        add_supporting("prior_dispute_risk", "Cardholder has prior disputes on record")
-    if features.high_amount_ratio:
-        add_supporting("high_amount_ratio", "Transaction amount is large relative to account balance")
-
-    if drift is not None and drift.drift_score >= DRIFT_SCORE_THRESHOLD:
-        add_supporting(
-            "pattern_evasion",
-            f"Agent 1 flagged pattern/evasion signals: {'; '.join(drift.drift_signals)}",
-            weight=WEIGHTS["pattern_evasion"] * drift.drift_score,
-        )
-
-    if features.merchant_risk_score < MERCHANT_RISK_LOW:
-        evidence.append(Evidence(
-            signal="merchant_risk_low",
-            direction=EvidenceDirection.CONTRADICTS_FRAUD,
-            strength=0.30,
-            description=f"Merchant risk score {features.merchant_risk_score:.1f} is well below typical risk range",
-        ))
-    if not features.geo_mismatch and not features.device_risk and not features.cvv_risk:
-        evidence.append(Evidence(
-            signal="clean_device_and_location",
-            direction=EvidenceDirection.CONTRADICTS_FRAUD,
-            strength=0.25,
-            description="No location, device, or CVV anomalies detected",
-        ))
-
-    score = min(1.0, triggered_weight / total_weight)
 
     return ScoreResult(
-        transaction_id=features.transaction_id,
-        score=round(score, 4),
+        transaction_id=txn.transaction_id,
+        score=round(proba, 4),
         evidence=evidence,
-        model_version="rule-based-v0",
+        model_version="random-forest-v1",
     )

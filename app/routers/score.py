@@ -17,8 +17,7 @@ def score_endpoint(transaction_id: str):
     store.save_drift(drift)
     log_stage(transaction_id, "pattern_agent", "agent_1", {"drift": drift.model_dump()})
 
-    features = store.get_features(transaction_id)
-    score = score_transaction(features, drift=drift)
+    score = score_transaction(txn, drift=drift)
     store.save_score(score)
     log_stage(transaction_id, "scoring_agent", "agent_2", {"score": score.model_dump()})
 
