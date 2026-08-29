@@ -1,4 +1,4 @@
-﻿"""
+"""
 Agent 3 -- Reviewer Agent (Evidence-Strength Check), recalibrated for the
 ML scorer. Evidence strength is a raw SHAP contribution magnitude
 (typically 0.005-0.15), NOT a 0-1 relative score.

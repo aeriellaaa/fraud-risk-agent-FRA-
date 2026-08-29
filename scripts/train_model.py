@@ -1,4 +1,4 @@
-﻿"""
+"""
 Trains the Phase 2 fraud model on credit_card_fraud_2026.csv.
 
 Run with: python scripts\train_model.py
@@ -38,8 +38,8 @@ CATEGORICAL_COLS = ["merchant_category", "card_type", "auth_method", "channel", 
 BOOLEAN_COLS = ["is_foreign_transaction", "is_new_merchant", "used_vpn", "ip_country_mismatch",
                 "billing_shipping_mismatch", "is_ai_generated_scam_attempt"]
 
-COST_FP = 25    # PLACEHOLDER -- not a verified citation
-COST_FN = 2000  # PLACEHOLDER -- not a verified citation
+COST_FP = 94      # Manual review cost: ~15 min at avg. Indian fraud analyst hourly rate of Rs 377/hr (ERI SalaryExpert, salaryexpert.com/salary/job/fraud-analyst/india)
+COST_FN = 34802    # Missed fraud cost: avg. value of card/internet banking fraud in India, FY22, from Lok Sabha data via Business Standard (business-standard.com). FY22 is the most recent card/internet-specific figure with a clean citation -- newer RBI releases report aggregate fraud dominated by loan/advances fraud, a different category.
 
 
 def main():
@@ -83,7 +83,7 @@ def main():
     precision = best_stats["tp"] / (best_stats["tp"] + best_stats["fp"]) if (best_stats["tp"] + best_stats["fp"]) else 0
     recall = best_stats["tp"] / (best_stats["tp"] + best_stats["fn"]) if (best_stats["tp"] + best_stats["fn"]) else 0
 
-    print(f"Best threshold: {best_threshold} | total cost: {best_cost} (FP=${COST_FP}, FN=${COST_FN}, placeholders)")
+    print(f"Best threshold: {best_threshold} | total cost: {best_cost} (FP=Rs{COST_FP}, FN=Rs{COST_FN}, sourced -- see script header)")
     print(f"Confusion matrix: {best_stats}")
     print(f"Precision: {precision:.4f}, Recall: {recall:.4f}, AUC: {auc:.4f}")
 
