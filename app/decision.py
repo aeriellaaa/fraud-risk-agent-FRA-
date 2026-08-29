@@ -9,7 +9,7 @@ from app.models import ScoreResult, ReviewResult, ReviewVerdict, Decision, Decis
 
 AUTO_REJECT_THRESHOLD = 0.15   # conservative: near the top of the observed score range
 AUTO_APPROVE_THRESHOLD = 0.01  # real cost-optimal threshold, sourced Rs94 FP / Rs34802 FN (see scripts/train_model.py)
-MARGIN = 0.01
+MARGIN = 0.002  # tightened for the real ML score range (0-0.28); 0.01 was inherited from the placeholder-threshold era and was swallowing legitimate low scores into escalation
 
 
 def route_decision(score_result: ScoreResult, review_result: ReviewResult) -> Decision:
