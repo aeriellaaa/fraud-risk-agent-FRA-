@@ -22,7 +22,7 @@ SIGNAL_CATEGORY = {
     "pattern_evasion": "pattern_evasion",
 }
 
-HIGH_SCORE_THRESHOLD = 0.02
+HIGH_SCORE_THRESHOLD = 0.01   # real cost-optimal threshold, sourced Rs94 FP / Rs34802 FN (see scripts/train_model.py)
 DOWNGRADE_THRESHOLD = -0.05
 
 
