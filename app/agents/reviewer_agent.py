@@ -1,37 +1,32 @@
 ﻿"""
-Agent 3 -- Reviewer Agent (Evidence-Strength Check).
-
-Takes Agent 2's score + evidence list and checks whether the score's
-confidence is actually earned -- NOT a second opinion on fraud, a check
-on whether the first opinion is trustworthy. Implements the four locked
-checks from the roadmap:
-
-  1. Evidence count vs score magnitude
-  2. Evidence diversity (redundant same-type signals count for less)
-  3. Contradiction check
-  4. Threshold margin (handled downstream by the Decision Router, which
-     reads this agent's adjusted score to decide auto vs escalate)
+Agent 3 -- Reviewer Agent (Evidence-Strength Check), recalibrated for the
+ML scorer. Evidence strength is now a raw SHAP contribution magnitude
+(typically 0.005-0.15), NOT a 0-1 relative score like the old rule-based
+version -- every threshold below is scaled accordingly, grounded in the
+actual training run (scripts/train_model.py): cost-optimal threshold
+0.02, max observed test-set score 0.28.
 """
 
 from app.models import ScoreResult, ReviewResult, ReviewVerdict, EvidenceDirection
 
-# Groups signals into independent categories. Two signals from the same
-# category (e.g. cvv_risk and device_risk, both "device") corroborate
-# each other less than two signals from different categories.
 SIGNAL_CATEGORY = {
-    "geo_mismatch": "location",
-    "cvv_risk": "device",
-    "device_risk": "device",
-    "velocity_flag": "behavior",
-    "high_amount_ratio": "behavior",
-    "merchant_risk_high": "merchant",
-    "new_merchant_risk": "merchant",
-    "prior_dispute_risk": "dispute_history",
-    "ai_scam_flag": "ai_flag",
+    "amount_usd": "financial", "account_balance_usd": "financial",
+    "merchant_category": "merchant", "merchant_risk_score": "merchant", "is_new_merchant": "merchant",
+    "card_type": "card", "auth_method": "card", "card_age_months": "card",
+    "channel": "device", "device_type": "device", "used_vpn": "device",
+    "is_foreign_transaction": "location", "distance_from_home_km": "location",
+    "ip_country_mismatch": "location", "billing_shipping_mismatch": "location",
+    "hours_since_last_txn": "behavior", "txn_count_last_24h": "behavior",
+    "velocity_score": "behavior", "time_of_day_hour": "behavior", "day_of_week": "behavior",
+    "cvv_retry_count": "authentication",
+    "customer_age": "profile",
+    "is_ai_generated_scam_attempt": "ai_flag",
+    "prior_disputes": "dispute_history",
+    "pattern_evasion": "pattern_evasion",
 }
 
-HIGH_SCORE_THRESHOLD = 0.5
-DOWNGRADE_THRESHOLD = -0.25
+HIGH_SCORE_THRESHOLD = 0.02   # matches the cost-optimal decision boundary from training
+DOWNGRADE_THRESHOLD = -0.05   # small: evidence magnitudes here are tiny (~0.005-0.15)
 
 
 def review_score(score_result: ScoreResult) -> ReviewResult:
@@ -41,37 +36,33 @@ def review_score(score_result: ScoreResult) -> ReviewResult:
     adjustment = 0.0
     reasons = []
 
-    # Check 1: evidence count vs score magnitude
     if score_result.score >= HIGH_SCORE_THRESHOLD and len(supporting) <= 1:
-        adjustment -= 0.35
+        adjustment -= 0.05
         reasons.append(
-            f"Score of {score_result.score:.2f} rests on only {len(supporting)} "
-            f"supporting signal(s) -- high score, thin evidence."
+            f"Score of {score_result.score:.4f} rests on only {len(supporting)} "
+            f"supporting signal(s) -- flagged score, thin evidence."
         )
 
-    # Check 2: evidence diversity
     categories = {SIGNAL_CATEGORY.get(e.signal, e.signal) for e in supporting}
     diversity_ratio = (len(categories) / len(supporting)) if supporting else 1.0
-    if len(supporting) >= 2 and diversity_ratio < 0.6:
-        adjustment -= 0.15
+    if len(supporting) >= 2 and diversity_ratio < 0.5:
+        adjustment -= 0.02
         reasons.append(
             f"Supporting evidence concentrated in {len(categories)} category(ies) "
             f"across {len(supporting)} signals -- limited independent corroboration."
         )
 
-    # Check 3: contradiction check
     contradiction_strength = sum(e.strength for e in contradicting)
     if contradiction_strength > 0:
-        penalty = min(0.30, contradiction_strength * 0.5)
+        penalty = min(0.05, contradiction_strength * 0.3)
         adjustment -= penalty
         reasons.append(
             f"{len(contradicting)} contradicting signal(s) found "
-            f"(total strength {contradiction_strength:.2f}) -- confidence downgraded."
+            f"(total SHAP magnitude {contradiction_strength:.4f}) -- confidence downgraded."
         )
 
     adjustment = max(-1.0, min(0.0, adjustment))
 
-    # Verdict
     if len(supporting) == 0:
         verdict = ReviewVerdict.INSUFFICIENT_EVIDENCE
         if not reasons:
