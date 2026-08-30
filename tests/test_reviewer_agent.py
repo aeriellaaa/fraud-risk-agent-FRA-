@@ -53,15 +53,15 @@ def test_strong_diverse_evidence_is_upheld():
 
 
 def test_strong_contradicting_evidence_reduces_confidence():
+    # 1 supporting signal (triggers "thin evidence", -0.05) plus 2
+    # contradicting signals at 0.06 each (triggers contradiction check,
+    # 0.12 * 0.3 = -0.036). Combined -0.086, clearly past the -0.05
+    # downgrade threshold -- not a borderline case.
     score_result = ScoreResult(
         transaction_id="review-test-004", score=0.06,
         evidence=[
             Evidence(signal="amount_usd", direction=EvidenceDirection.SUPPORTS_FRAUD,
                       strength=0.03, description="financial"),
-            Evidence(signal="account_balance_usd", direction=EvidenceDirection.SUPPORTS_FRAUD,
-                      strength=0.03, description="financial"),
-            Evidence(signal="merchant_category", direction=EvidenceDirection.SUPPORTS_FRAUD,
-                      strength=0.03, description="merchant"),
             Evidence(signal="velocity_score", direction=EvidenceDirection.CONTRADICTS_FRAUD,
                       strength=0.06, description="behavior"),
             Evidence(signal="customer_age", direction=EvidenceDirection.CONTRADICTS_FRAUD,
@@ -71,4 +71,5 @@ def test_strong_contradicting_evidence_reduces_confidence():
     )
     result = review_score(score_result)
     assert result.verdict == ReviewVerdict.CONFIDENCE_DOWNGRADED
+    assert result.confidence_adjustment < -0.05
     assert "contradicting signal" in result.reason
