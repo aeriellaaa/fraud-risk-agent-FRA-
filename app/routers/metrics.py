@@ -1,6 +1,7 @@
 ﻿"""
 Real precision/recall/cost metrics from the trained model, loaded from
-scripts/train_model.py's output.
+scripts/train_model.py's output, plus a baseline comparison from
+scripts/baseline_comparison.py.
 """
 
 from fastapi import APIRouter
@@ -9,12 +10,12 @@ from pathlib import Path
 router = APIRouter()
 
 RESULTS_FILE = Path("app/ml_artifacts/training_results.txt")
+BASELINE_FILE = Path("app/ml_artifacts/baseline_comparison.txt")
 
 
 def _parse_results() -> dict:
     if not RESULTS_FILE.exists():
         return {"error": "Model not yet trained. Run scripts/train_model.py first."}
-
     text = RESULTS_FILE.read_text()
     result = {}
     for line in text.strip().split("\n"):
@@ -23,6 +24,12 @@ def _parse_results() -> dict:
         key, value = line.split(":", 1)
         result[key.strip()] = value.strip()
     return result
+
+
+def _read_baseline() -> str:
+    if not BASELINE_FILE.exists():
+        return "Not yet generated. Run scripts/baseline_comparison.py first."
+    return BASELINE_FILE.read_text()
 
 
 @router.get("/metrics")
@@ -54,4 +61,5 @@ def get_metrics():
         "cost_figures_source": "FP=Rs94 (ERI SalaryExpert), FN=Rs34802 (Lok Sabha data via "
                                 "Business Standard, FY22 card/internet fraud). Both sourced, "
                                 "see scripts/train_model.py header.",
+        "baseline_comparison": _read_baseline(),
     }
