@@ -3,14 +3,6 @@ Compares the trained ML model against two baselines, on the SAME
 held-out test split (random_state=42, matching scripts/train_model.py)
 and the SAME real, cited cost model (Rs94 FP / Rs34802 FN).
 
-Baselines:
-  1. Rules engine -- a hand-weighted scorer using the same signal logic
-     as the original Phase 1 design (velocity, merchant risk, CVV
-     retries, VPN, foreign transaction), independent of the trained
-     model. This is what "a human wrote some if-statements" looks like.
-  2. Naive (amount alone) -- score = normalized transaction amount.
-     Same shape as kavach's "transaction amount alone" baseline.
-
 Run with: python -m scripts.baseline_comparison
 """
 
@@ -23,6 +15,7 @@ from sklearn.metrics import roc_auc_score, average_precision_score, confusion_ma
 DATA_PATH = "data/credit_card_fraud_2026.csv"
 COST_FP = 94
 COST_FN = 34802
+RESULTS_FILE = "app/ml_artifacts/baseline_comparison.txt"
 
 FEATURE_COLS = [
     "amount_usd", "merchant_category", "card_type", "auth_method", "channel", "device_type",
@@ -38,8 +31,6 @@ BOOLEAN_COLS = ["is_foreign_transaction", "is_new_merchant", "used_vpn", "ip_cou
 
 
 def rules_baseline_score(row) -> float:
-    """Independent hand-weighted rule scorer -- same signal logic as the
-    original Phase 1 design, not derived from the trained model."""
     score = 0.0
     if row["velocity_score"] > 27.6:
         score += 0.25
@@ -55,7 +46,6 @@ def rules_baseline_score(row) -> float:
 
 
 def naive_baseline_score(amounts: pd.Series) -> np.ndarray:
-    """Score = normalized transaction amount. No fraud logic at all."""
     return (amounts / amounts.max()).values
 
 
@@ -94,41 +84,37 @@ def main():
 
     print(f"Test set: {len(X_test)} transactions, {y_test.sum()} fraud\n")
 
-    results = {}
-
-    # 1. Rules baseline
     rules_scores = raw_test.apply(rules_baseline_score, axis=1).values
-    results["Rules engine (hand-weighted)"] = {
-        "roc_auc": roc_auc_score(y_test, rules_scores),
-        "pr_auc": average_precision_score(y_test, rules_scores),
-    }
-
-    # 2. Naive baseline
     naive_scores = naive_baseline_score(raw_test["amount_usd"])
-    results["Naive (amount alone)"] = {
-        "roc_auc": roc_auc_score(y_test, naive_scores),
-        "pr_auc": average_precision_score(y_test, naive_scores),
-    }
-
-    # 3. Trained ML model
     ml_scores = model.predict_proba(X_test)[:, 1]
-    results["Random Forest (trained)"] = {
-        "roc_auc": roc_auc_score(y_test, ml_scores),
-        "pr_auc": average_precision_score(y_test, ml_scores),
+
+    all_scores = {
+        "Rules engine (hand-weighted)": rules_scores,
+        "Naive (amount alone)": naive_scores,
+        "Random Forest (trained)": ml_scores,
     }
 
-    all_scores = {"Rules engine (hand-weighted)": rules_scores,
-                  "Naive (amount alone)": naive_scores,
-                  "Random Forest (trained)": ml_scores}
-
-    print(f"{'Approach':<32} {'ROC-AUC':>10} {'PR-AUC':>10} {'Cost-opt threshold':>20} {'Precision':>10} {'Recall':>10} {'Total cost (Rs)':>16}")
+    lines = []
+    header = f"{'Approach':<32} {'ROC-AUC':>10} {'PR-AUC':>10} {'Threshold':>12} {'Precision':>10} {'Recall':>10} {'Cost(Rs)':>14}"
+    print(header)
     print("-" * 112)
-    for name, scores in all_scores.items():
-        threshold, precision, recall, cost = cost_optimal(y_test, scores)
-        print(f"{name:<32} {results[name]['roc_auc']:>10.4f} {results[name]['pr_auc']:>10.4f} "
-              f"{threshold:>20.3f} {precision:>10.4f} {recall:>10.4f} {cost:>16,.0f}")
+    lines.append(header)
 
-    print(f"\nBase rate (fraud prevalence in test set): {y_test.mean():.4f}")
+    for name, scores in all_scores.items():
+        roc_auc = roc_auc_score(y_test, scores)
+        pr_auc = average_precision_score(y_test, scores)
+        threshold, precision, recall, cost = cost_optimal(y_test, scores)
+        row = f"{name:<32} {roc_auc:>10.4f} {pr_auc:>10.4f} {threshold:>12.3f} {precision:>10.4f} {recall:>10.4f} {cost:>14,.0f}"
+        print(row)
+        lines.append(row)
+
+    footer = f"\nBase rate (fraud prevalence in test set): {y_test.mean():.4f}"
+    print(footer)
+    lines.append(footer)
+
+    with open(RESULTS_FILE, "w") as f:
+        f.write("\n".join(lines))
+    print(f"\nSaved to {RESULTS_FILE}")
 
 
 if __name__ == "__main__":
