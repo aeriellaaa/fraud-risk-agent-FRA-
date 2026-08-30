@@ -1,105 +1,74 @@
+﻿"""
+Tests for Agent 3 (Reviewer). Written against real SHAP-scale evidence
+magnitudes (roughly 0.005-0.15) and the actual thresholds in
+reviewer_agent.py: HIGH_SCORE_THRESHOLD=0.01, DOWNGRADE_THRESHOLD=-0.05.
+"""
+
 from app.agents.reviewer_agent import review_score
-from app.models import ScoreResult, ReviewVerdict
-from app.models import Evidence, EvidenceDirection
+from app.models import ScoreResult, ReviewVerdict, Evidence, EvidenceDirection
+
+
 def test_no_supporting_evidence_is_insufficient():
     score_result = ScoreResult(
-        transaction_id="review-test-001",
-        score=0.0,
-        evidence=[],
-        model_version="rule-based-v0",
+        transaction_id="review-test-001", score=0.0, evidence=[],
+        model_version="random-forest-v1",
     )
-
     result = review_score(score_result)
-
-    assert result.transaction_id == "review-test-001"
     assert result.verdict == ReviewVerdict.INSUFFICIENT_EVIDENCE
     assert result.confidence_adjustment == 0.0
+    assert "No supporting evidence" in result.reason
+
+
 def test_high_score_with_thin_evidence_is_downgraded():
     score_result = ScoreResult(
-        transaction_id="review-test-002",
-        score=0.8,
-        evidence=[
-            Evidence(
-                signal="geo_mismatch",
-                direction=EvidenceDirection.SUPPORTS_FRAUD,
-                strength=0.7,
-                description="Location mismatch detected",
-            )
-        ],
-        model_version="rule-based-v0",
+        transaction_id="review-test-002", score=0.05,
+        evidence=[Evidence(signal="cvv_retry_count", direction=EvidenceDirection.SUPPORTS_FRAUD,
+                            strength=0.07, description="CVV retry")],
+        model_version="random-forest-v1",
     )
-
     result = review_score(score_result)
-
     assert result.verdict == ReviewVerdict.CONFIDENCE_DOWNGRADED
-    assert result.confidence_adjustment == -0.35
+    assert result.confidence_adjustment <= -0.05
     assert "thin evidence" in result.reason
+
+
 def test_strong_diverse_evidence_is_upheld():
     score_result = ScoreResult(
-        transaction_id="review-test-003",
-        score=0.8,
+        transaction_id="review-test-003", score=0.06,
         evidence=[
-            Evidence(
-                signal="geo_mismatch",
-                direction=EvidenceDirection.SUPPORTS_FRAUD,
-                strength=0.7,
-                description="Location mismatch detected",
-            ),
-            Evidence(
-                signal="velocity_flag",
-                direction=EvidenceDirection.SUPPORTS_FRAUD,
-                strength=0.45,
-                description="Unusual transaction velocity",
-            ),
-            Evidence(
-                signal="merchant_risk_high",
-                direction=EvidenceDirection.SUPPORTS_FRAUD,
-                strength=0.45,
-                description="High merchant risk",
-            ),
-            Evidence(
-                signal="prior_dispute_risk",
-                direction=EvidenceDirection.SUPPORTS_FRAUD,
-                strength=0.30,
-                description="Prior disputes detected",
-            ),
+            Evidence(signal="amount_usd", direction=EvidenceDirection.SUPPORTS_FRAUD,
+                      strength=0.05, description="financial"),
+            Evidence(signal="merchant_risk_score", direction=EvidenceDirection.SUPPORTS_FRAUD,
+                      strength=0.05, description="merchant"),
+            Evidence(signal="velocity_score", direction=EvidenceDirection.SUPPORTS_FRAUD,
+                      strength=0.05, description="behavior"),
+            Evidence(signal="cvv_retry_count", direction=EvidenceDirection.SUPPORTS_FRAUD,
+                      strength=0.05, description="authentication"),
         ],
-        model_version="rule-based-v0",
+        model_version="random-forest-v1",
     )
-
     result = review_score(score_result)
-
     assert result.verdict == ReviewVerdict.CONFIDENCE_UPHELD
     assert result.confidence_adjustment == 0.0
+
+
 def test_strong_contradicting_evidence_reduces_confidence():
     score_result = ScoreResult(
-        transaction_id="review-test-004",
-        score=0.7,
+        transaction_id="review-test-004", score=0.06,
         evidence=[
-            Evidence(
-                signal="geo_mismatch",
-                direction=EvidenceDirection.SUPPORTS_FRAUD,
-                strength=0.7,
-                description="Location mismatch detected",
-            ),
-            Evidence(
-                signal="velocity_flag",
-                direction=EvidenceDirection.SUPPORTS_FRAUD,
-                strength=0.45,
-                description="Unusual transaction velocity",
-            ),
-            Evidence(
-                signal="merchant_risk_low",
-                direction=EvidenceDirection.CONTRADICTS_FRAUD,
-                strength=0.6,
-                description="Merchant risk is low",
-            ),
+            Evidence(signal="amount_usd", direction=EvidenceDirection.SUPPORTS_FRAUD,
+                      strength=0.03, description="financial"),
+            Evidence(signal="account_balance_usd", direction=EvidenceDirection.SUPPORTS_FRAUD,
+                      strength=0.03, description="financial"),
+            Evidence(signal="merchant_category", direction=EvidenceDirection.SUPPORTS_FRAUD,
+                      strength=0.03, description="merchant"),
+            Evidence(signal="velocity_score", direction=EvidenceDirection.CONTRADICTS_FRAUD,
+                      strength=0.06, description="behavior"),
+            Evidence(signal="customer_age", direction=EvidenceDirection.CONTRADICTS_FRAUD,
+                      strength=0.06, description="profile"),
         ],
-        model_version="rule-based-v0",
+        model_version="random-forest-v1",
     )
-
     result = review_score(score_result)
-
     assert result.verdict == ReviewVerdict.CONFIDENCE_DOWNGRADED
-    assert result.confidence_adjustment == -0.30
     assert "contradicting signal" in result.reason

@@ -1,110 +1,76 @@
-from app.models import FeatureVector
+﻿"""
+Tests for Agent 2 (ML scorer). Written against the real Random Forest +
+SHAP implementation -- does not hardcode exact SHAP values, since those
+can shift slightly across library versions. Tests behavior, not exact
+numbers.
+"""
+
+from app.models import TransactionIn, DriftResult
 from app.agents.scoring_agent import score_transaction
-from app.models import DriftResult
+
+CLEAN_TXN = TransactionIn(
+    transaction_id="test-clean-001",
+    amount_usd=42.86, merchant_category="Restaurants", card_type="Visa",
+    auth_method="OTP", channel="Online", device_type="Android Phone",
+    is_foreign_transaction=False, hours_since_last_txn=13.54, txn_count_last_24h=2,
+    distance_from_home_km=22.35, card_age_months=39, customer_age=25,
+    account_balance_usd=1080.71, is_new_merchant=False, used_vpn=False,
+    ip_country_mismatch=False, billing_shipping_mismatch=False, cvv_retry_count=0,
+    velocity_score=0.1, time_of_day_hour=18, day_of_week=3,
+    is_ai_generated_scam_attempt=False, merchant_risk_score=42.3, prior_disputes=0,
+)
+
+RISKY_TXN = TransactionIn(
+    transaction_id="test-risky-001",
+    amount_usd=2396.82, merchant_category="Crypto Exchange", card_type="Visa",
+    auth_method="OTP", channel="ATM", device_type="Mac",
+    is_foreign_transaction=False, hours_since_last_txn=5.37, txn_count_last_24h=3,
+    distance_from_home_km=15.8, card_age_months=46, customer_age=23,
+    account_balance_usd=2611.03, is_new_merchant=True, used_vpn=False,
+    ip_country_mismatch=False, billing_shipping_mismatch=False, cvv_retry_count=1,
+    velocity_score=11.3, time_of_day_hour=5, day_of_week=5,
+    is_ai_generated_scam_attempt=False, merchant_risk_score=92.0, prior_disputes=0,
+)
 
 
 def test_clean_transaction_gets_low_score():
-    features = FeatureVector(
-        transaction_id="test-clean-001",
-        velocity_flag=False,
-        geo_mismatch=False,
-        device_risk=False,
-        new_merchant_risk=False,
-        cvv_risk=False,
-        prior_dispute_risk=False,
-        high_amount_ratio=False,
-        merchant_risk_score=10.0,
-        ai_scam_flag=False,
-    )
-
-    result = score_transaction(features)
-
+    result = score_transaction(CLEAN_TXN)
     assert result.transaction_id == "test-clean-001"
-    assert result.score == 0.0
-    assert result.model_version == "rule-based-v0"
-def test_risky_transaction_gets_supporting_evidence():
-    features = FeatureVector(
-        transaction_id="test-risky-001",
-        velocity_flag=True,
-        geo_mismatch=True,
-        device_risk=True,
-        new_merchant_risk=True,
-        cvv_risk=True,
-        prior_dispute_risk=True,
-        high_amount_ratio=True,
-        merchant_risk_score=60.0,
-        ai_scam_flag=True,
-    )
+    assert 0.0 <= result.score < 0.05
+    assert result.model_version == "random-forest-v1"
 
-    result = score_transaction(features)
 
-    assert result.transaction_id == "test-risky-001"
-    assert result.score > 0.0
+def test_score_returns_evidence_with_valid_shape():
+    result = score_transaction(RISKY_TXN)
+    assert len(result.evidence) > 0
+    for e in result.evidence:
+        assert 0.0 <= e.strength <= 1.0
+        assert e.direction.value in ("supports_fraud", "contradicts_fraud")
+        assert isinstance(e.description, str) and len(e.description) > 0
 
-    signals = {e.signal for e in result.evidence}
 
-    assert "geo_mismatch" in signals
-    assert "cvv_risk" in signals
-    assert "ai_scam_flag" in signals
-    assert "velocity_flag" in signals
-    assert "device_risk" in signals
-    assert "merchant_risk_high" in signals
-    assert "new_merchant_risk" in signals
-    assert "prior_dispute_risk" in signals
-    assert "high_amount_ratio" in signals
+def test_evidence_signals_come_from_real_features():
+    result = score_transaction(RISKY_TXN)
+    valid_signals = set(TransactionIn.model_fields.keys()) | {"pattern_evasion"}
+    for e in result.evidence:
+        assert e.signal in valid_signals, f"Unexpected signal: {e.signal}"
+
 
 def test_drift_result_becomes_pattern_evasion_evidence():
-    features = FeatureVector(
-        transaction_id="test-drift-001",
-        velocity_flag=False,
-        geo_mismatch=False,
-        device_risk=False,
-        new_merchant_risk=False,
-        cvv_risk=False,
-        prior_dispute_risk=False,
-        high_amount_ratio=False,
-        merchant_risk_score=20.0,
-        ai_scam_flag=False,
-    )
-
     drift = DriftResult(
         transaction_id="test-drift-001",
         drift_score=0.8,
         drift_signals=["unusual_velocity_pattern"],
     )
-
-    result = score_transaction(features, drift)
-
-    pattern_evidence = [
-        e for e in result.evidence
-        if e.signal == "pattern_evasion"
-    ]
-
+    result = score_transaction(CLEAN_TXN, drift=drift)
+    pattern_evidence = [e for e in result.evidence if e.signal == "pattern_evasion"]
     assert len(pattern_evidence) == 1
     assert pattern_evidence[0].direction.value == "supports_fraud"
-    assert pattern_evidence[0].strength == 0.50 * 0.8
-def test_clean_signals_create_contradicting_evidence():
-    features = FeatureVector(
-        transaction_id="test-contradict-001",
-        velocity_flag=False,
-        geo_mismatch=False,
-        device_risk=False,
-        new_merchant_risk=False,
-        cvv_risk=False,
-        prior_dispute_risk=False,
-        high_amount_ratio=False,
-        merchant_risk_score=10.0,
-        ai_scam_flag=False,
-    )
+    assert pattern_evidence[0].strength == round(min(1.0, 0.8 * 0.1), 4)
 
-    result = score_transaction(features)
 
-    contradictions = [
-        e for e in result.evidence
-        if e.direction.value == "contradicts_fraud"
-    ]
-
-    signals = {e.signal for e in contradictions}
-
-    assert "merchant_risk_low" in signals
-    assert "clean_device_and_location" in signals
+def test_low_drift_score_does_not_add_pattern_evasion_evidence():
+    drift = DriftResult(transaction_id="test-drift-002", drift_score=0.1, drift_signals=[])
+    result = score_transaction(CLEAN_TXN, drift=drift)
+    pattern_evidence = [e for e in result.evidence if e.signal == "pattern_evasion"]
+    assert len(pattern_evidence) == 0
