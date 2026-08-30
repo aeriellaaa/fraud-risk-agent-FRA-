@@ -1,7 +1,7 @@
 AUC: 0.9266
-Best threshold: 0.02
-Best cost: 27975
-Confusion matrix: {'tn': 3133, 'fp': 799, 'fn': 4, 'tp': 64}
-Precision: 0.0742
-Recall: 0.9412
-Default 0.5 threshold cost: 136000
+Best threshold: 0.01
+Best cost: 133950
+Confusion matrix: {'tn': 2507, 'fp': 1425, 'fn': 0, 'tp': 68}
+Precision: 0.0455
+Recall: 1.0000
+Default 0.5 threshold cost: 2366536
