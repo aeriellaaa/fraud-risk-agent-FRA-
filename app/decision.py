@@ -1,8 +1,10 @@
-"""
+﻿"""
 Decision Router, recalibrated for the ML scorer's real probability range
 (max observed on held-out test: 0.28) and the cost-optimal threshold
-found in scripts/train_model.py (0.02, using placeholder $25 FP / $2000
-FN costs -- not yet verified citations, see README).
+found in scripts/train_model.py (0.01, using verified Rs94 FP / Rs34802 FN
+costs -- FN cost sourced to Lok Sabha data via Business Standard, FP cost
+estimated from ERI SalaryExpert; see docs/model_selection.md for full
+sourcing detail and which figure is verified vs. estimated).
 """
 
 from app.models import ScoreResult, ReviewResult, ReviewVerdict, Decision, DecisionOutcome
@@ -53,3 +55,4 @@ def route_decision(score_result: ScoreResult, review_result: ReviewResult) -> De
         final_score=round(final_score, 4),
         reason=reason,
     )
+
