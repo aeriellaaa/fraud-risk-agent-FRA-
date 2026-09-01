@@ -6,3 +6,9 @@ venv/
 *.db
 audit_log.jsonl
 .DS_Store
+
+# IEEE-CIS large raw data -- download from Kaggle locally, never commit to git
+data/train_transaction.csv
+data/train_identity.csv
+data/train_transaction_sample.csv
+data/ieee_cis_cleaned.csv

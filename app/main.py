@@ -18,3 +18,7 @@ app.include_router(audit_log.router, tags=["audit"])
 app.include_router(metrics.router, tags=["metrics"])
 app.include_router(process.router, tags=["pipeline"])
 app.include_router(entity_drift_demo.router, tags=["demo"])
+
+
+from app.routers import ieee_pipeline
+app.include_router(ieee_pipeline.router, tags=["ieee-pipeline"])

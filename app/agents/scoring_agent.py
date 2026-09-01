@@ -11,6 +11,7 @@ misleadingly large "contradiction" signals.
 import pickle
 import shap
 import numpy as np
+import pandas as pd
 from pathlib import Path
 
 from app.models import TransactionIn, ScoreResult, Evidence, EvidenceDirection, DriftResult
@@ -58,7 +59,7 @@ TOP_N_EVIDENCE = 6
 MIN_CONTRIBUTION = 0.005
 
 
-def _encode_transaction(txn: TransactionIn) -> np.ndarray:
+def _encode_transaction(txn: TransactionIn) -> pd.DataFrame:
     row = []
     for col in FEATURE_ORDER:
         val = getattr(txn, col)
@@ -68,7 +69,7 @@ def _encode_transaction(txn: TransactionIn) -> np.ndarray:
         elif col in BOOLEAN_COLS:
             val = int(val)
         row.append(val)
-    return np.array(row).reshape(1, -1)
+    return pd.DataFrame([row], columns=FEATURE_ORDER)
 
 
 def score_transaction(txn: TransactionIn, drift: DriftResult | None = None) -> ScoreResult:

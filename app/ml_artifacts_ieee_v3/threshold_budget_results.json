@@ -1,0 +1,38 @@
+{
+  "1pct_fp_budget": {
+    "threshold": 0.8367,
+    "fp": 1179,
+    "fn": 2317,
+    "tp": 1747,
+    "tn": 112865,
+    "recall": 0.4299,
+    "cost_inr": 80747060
+  },
+  "2pct_fp_budget": {
+    "threshold": 0.7574,
+    "fp": 2361,
+    "fn": 1989,
+    "tp": 2075,
+    "tn": 111683,
+    "recall": 0.5106,
+    "cost_inr": 69443112
+  },
+  "5pct_fp_budget": {
+    "threshold": 0.6143,
+    "fp": 5904,
+    "fn": 1453,
+    "tp": 2611,
+    "tn": 108140,
+    "recall": 0.6425,
+    "cost_inr": 51122282
+  },
+  "10pct_fp_budget": {
+    "threshold": 0.4595,
+    "fp": 11785,
+    "fn": 1004,
+    "tp": 3060,
+    "tn": 102259,
+    "recall": 0.753,
+    "cost_inr": 36048998
+  }
+}

@@ -1,0 +1,2 @@
+Raw output type: <class 'numpy.ndarray'>
+Final fraud_shap shape used: (3, 150)
