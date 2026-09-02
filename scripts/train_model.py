@@ -8,9 +8,9 @@ Outputs:
   app/ml_artifacts/encoders.pkl  -- LabelEncoders for categorical columns
   Prints held-out precision/recall/AUC + a cost-optimal threshold sweep.
 
-Cost figures below ($25 FP / $2000 FN) are PLACEHOLDERS -- explicitly not
-verified against a real citation. Do not present these as real cost figures
-to judges without replacing them with numbers you can defend.
+Cost figures below (Rs94 FP / Rs34802 FN) are VERIFIED and sourced -- see
+inline comments for citations. See scripts/calibration_and_bootstrap_analysis.py
+for calibration testing (not adopted -- see that script) and bootstrap CI.
 """
 
 import pickle
