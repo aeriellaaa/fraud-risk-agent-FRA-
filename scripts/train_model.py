@@ -1,4 +1,4 @@
-"""
+﻿"""
 Trains the Phase 2 fraud model on credit_card_fraud_2026.csv.
 
 Run with: python scripts\train_model.py
@@ -112,3 +112,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
