@@ -1,0 +1,59 @@
+{
+  "daily_transaction_volume": 5000,
+  "rows": [
+    {
+      "scenario": "Cost-optimal (unconstrained capacity)",
+      "team_size": null,
+      "auto_approve_threshold": 0.01,
+      "escalate_rate": 0.3,
+      "recall": 0.9559,
+      "sustainable": false,
+      "note": "Assumes unlimited review capacity -- not achievable with any real team at this volume."
+    },
+    {
+      "scenario": "1-analyst team",
+      "team_size": 1,
+      "auto_approve_threshold": 0.117,
+      "escalate_rate": 0.0062,
+      "recall": 0.1029,
+      "sustainable": true,
+      "note": "At 1 analyst(s) (34 reviews/day capacity, 5,000 txns/day assumed), the cost-optimal threshold (0.01) is NOT reachable without a growing backlog. This threshold (0.1170) is the closest capacity-respecting alternative."
+    },
+    {
+      "scenario": "2-analyst team",
+      "team_size": 2,
+      "auto_approve_threshold": 0.097,
+      "escalate_rate": 0.0127,
+      "recall": 0.2353,
+      "sustainable": true,
+      "note": "At 2 analyst(s) (69 reviews/day capacity, 5,000 txns/day assumed), the cost-optimal threshold (0.01) is NOT reachable without a growing backlog. This threshold (0.0970) is the closest capacity-respecting alternative."
+    },
+    {
+      "scenario": "5-analyst team",
+      "team_size": 5,
+      "auto_approve_threshold": 0.067,
+      "escalate_rate": 0.0332,
+      "recall": 0.3971,
+      "sustainable": true,
+      "note": "At 5 analyst(s) (171 reviews/day capacity, 5,000 txns/day assumed), the cost-optimal threshold (0.01) is NOT reachable without a growing backlog. This threshold (0.0670) is the closest capacity-respecting alternative."
+    },
+    {
+      "scenario": "10-analyst team",
+      "team_size": 10,
+      "auto_approve_threshold": 0.047,
+      "escalate_rate": 0.0628,
+      "recall": 0.6176,
+      "sustainable": true,
+      "note": "At 10 analyst(s) (343 reviews/day capacity, 5,000 txns/day assumed), the cost-optimal threshold (0.01) is NOT reachable without a growing backlog. This threshold (0.0470) is the closest capacity-respecting alternative."
+    },
+    {
+      "scenario": "20-analyst team",
+      "team_size": 20,
+      "auto_approve_threshold": 0.027,
+      "escalate_rate": 0.13,
+      "recall": 0.7647,
+      "sustainable": true,
+      "note": "At 20 analyst(s) (686 reviews/day capacity, 5,000 txns/day assumed), the cost-optimal threshold (0.01) is NOT reachable without a growing backlog. This threshold (0.0270) is the closest capacity-respecting alternative."
+    }
+  ]
+}

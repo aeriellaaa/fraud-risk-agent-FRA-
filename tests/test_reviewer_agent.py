@@ -73,3 +73,26 @@ def test_strong_contradicting_evidence_reduces_confidence():
     assert result.verdict == ReviewVerdict.CONFIDENCE_DOWNGRADED
     assert result.confidence_adjustment < -0.05
     assert "contradicting signal" in result.reason
+
+
+def test_contradiction_penalty_is_relative_not_absolute():
+    score_result = ScoreResult(
+        transaction_id="regression-001", score=0.2333,
+        evidence=[
+            Evidence(signal="cvv_retry_count", direction=EvidenceDirection.SUPPORTS_FRAUD,
+                      strength=0.1206, description="cvv"),
+            Evidence(signal="ip_country_mismatch", direction=EvidenceDirection.SUPPORTS_FRAUD,
+                      strength=0.0946, description="geo"),
+            Evidence(signal="is_new_merchant", direction=EvidenceDirection.SUPPORTS_FRAUD,
+                      strength=0.0515, description="merchant"),
+            Evidence(signal="time_of_day_hour", direction=EvidenceDirection.CONTRADICTS_FRAUD,
+                      strength=0.0812, description="time"),
+            Evidence(signal="account_balance_usd", direction=EvidenceDirection.CONTRADICTS_FRAUD,
+                      strength=0.0806, description="balance"),
+            Evidence(signal="distance_from_home_km", direction=EvidenceDirection.CONTRADICTS_FRAUD,
+                      strength=0.0594, description="distance"),
+        ],
+        model_version="random-forest-v1",
+    )
+    result = review_score(score_result)
+    assert result.verdict == ReviewVerdict.CONFIDENCE_UPHELD

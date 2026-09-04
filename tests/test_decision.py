@@ -44,3 +44,23 @@ def test_downgraded_high_score_cannot_auto_reject():
     result = route_decision(score_result, review_result)
     assert result.outcome == DecisionOutcome.ESCALATE_TO_HUMAN
     assert result.final_score == 0.15
+
+
+def test_downgraded_verdict_cannot_auto_approve_a_nonsafe_original_score():
+    score_result = ScoreResult(transaction_id="regression-002", score=0.05, evidence=[],
+                                model_version="random-forest-v1")
+    review_result = ReviewResult(transaction_id="regression-002",
+                                  verdict=ReviewVerdict.CONFIDENCE_DOWNGRADED,
+                                  confidence_adjustment=-0.05, reason="Thin evidence.")
+    result = route_decision(score_result, review_result)
+    assert result.outcome == DecisionOutcome.ESCALATE_TO_HUMAN
+
+
+def test_small_negative_adjustment_cannot_push_escalate_zone_to_approve():
+    score_result = ScoreResult(transaction_id="regression-003", score=0.03, evidence=[],
+                                model_version="random-forest-v1")
+    review_result = ReviewResult(transaction_id="regression-003",
+                                  verdict=ReviewVerdict.CONFIDENCE_UPHELD,
+                                  confidence_adjustment=-0.02, reason="Minor concentration penalty.")
+    result = route_decision(score_result, review_result)
+    assert result.outcome == DecisionOutcome.ESCALATE_TO_HUMAN

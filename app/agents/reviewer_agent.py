@@ -1,4 +1,4 @@
-"""
+﻿"""
 Agent 3 -- Reviewer Agent (Evidence-Strength Check), recalibrated for the
 ML scorer. Evidence strength is a raw SHAP contribution magnitude
 (typically 0.005-0.15), NOT a 0-1 relative score.
@@ -49,22 +49,23 @@ def review_score(score_result: ScoreResult) -> ReviewResult:
             f"across {len(supporting)} signals -- limited independent corroboration."
         )
 
+    # Contradiction penalty is RELATIVE to supporting strength, not absolute --
+    # a real fraud case can have both supporting and contradicting signals; what
+    # matters is whether contradiction outweighs support, not whether it merely exists.
+    supporting_strength = sum(e.strength for e in supporting)
     contradiction_strength = sum(e.strength for e in contradicting)
     if contradiction_strength > 0:
-        penalty = min(0.05, contradiction_strength * 0.3)
-        adjustment -= penalty
-        reasons.append(
-            f"{len(contradicting)} contradicting signal(s) found "
-            f"(total SHAP magnitude {contradiction_strength:.4f})."
-        )
+        net_contradiction = contradiction_strength - supporting_strength
+        if net_contradiction > 0:
+            penalty = min(0.05, net_contradiction * 0.3)
+            adjustment -= penalty
+            reasons.append(
+                f"{len(contradicting)} contradicting signal(s) (magnitude {contradiction_strength:.4f}) "
+                f"outweigh supporting evidence (magnitude {supporting_strength:.4f})."
+            )
 
     adjustment = max(-1.0, min(0.0, adjustment))
 
-    # Verdict decided first, then the reason string is built to always
-    # match it -- previously, a contradiction-check reason could get
-    # added ahead of the "no supporting evidence" explanation, making
-    # an insufficient_evidence verdict read like a confidence_downgraded
-    # one. Fixed by prefixing the verdict-specific explanation always.
     if len(supporting) == 0:
         verdict = ReviewVerdict.INSUFFICIENT_EVIDENCE
         prefix = "No supporting evidence found for a fraud determination."
