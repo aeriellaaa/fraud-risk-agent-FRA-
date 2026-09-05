@@ -1,5 +1,9 @@
 ﻿from fastapi import FastAPI
-from app.routers import ingest, score, review, decisions, audit_log, metrics, health, process, entity_drift_demo
+from fastapi.middleware.cors import CORSMiddleware
+from app.routers import (
+    ingest, score, review, decisions, audit_log, metrics, health,
+    process, entity_drift_demo, ieee_pipeline,
+)
 
 app = FastAPI(
     title="Fraud/Risk Flag Agent",
@@ -7,6 +11,14 @@ app = FastAPI(
                  "Scoring Agent -> Reviewer Agent, with append-only audit logging and "
                  "threshold-based decision routing.",
     version="0.1.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(health.router, tags=["health"])
@@ -18,7 +30,4 @@ app.include_router(audit_log.router, tags=["audit"])
 app.include_router(metrics.router, tags=["metrics"])
 app.include_router(process.router, tags=["pipeline"])
 app.include_router(entity_drift_demo.router, tags=["demo"])
-
-
-from app.routers import ieee_pipeline
 app.include_router(ieee_pipeline.router, tags=["ieee-pipeline"])
