@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+﻿from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import (
     ingest, score, review, decisions, audit_log, metrics, health,
@@ -13,12 +13,15 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# CORS: allows the frontend (guard-analytics-ui / Fraudline Console, running on a
-# different origin -- Vite dev server or a deployed static host) to call this API.
-# Tighten allow_origins to the real deployed frontend URL before going to production.
+# CORS: allows the frontend (Fraudline Console on Vercel, plus local dev servers)
+# to call this API from a different origin.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:8080", "http://127.0.0.1:8080"],
+    allow_origins=[
+        "http://localhost:5173", "http://127.0.0.1:5173",
+        "http://localhost:8080", "http://127.0.0.1:8080",
+        "https://guard-analytics-ui.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
