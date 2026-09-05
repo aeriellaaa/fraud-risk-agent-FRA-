@@ -1,0 +1,54 @@
+{
+  "curve": [
+    {
+      "threshold": 0.01,
+      "cost_inr": 133950,
+      "fp": 1425,
+      "fn": 0
+    },
+    {
+      "threshold": 0.02,
+      "cost_inr": 214314,
+      "fp": 799,
+      "fn": 4
+    },
+    {
+      "threshold": 0.05,
+      "cost_inr": 926660,
+      "fp": 232,
+      "fn": 26
+    },
+    {
+      "threshold": 0.1,
+      "cost_inr": 1815156,
+      "fp": 58,
+      "fn": 52
+    },
+    {
+      "threshold": 0.15,
+      "cost_inr": 2159322,
+      "fp": 17,
+      "fn": 62
+    },
+    {
+      "threshold": 0.2,
+      "cost_inr": 2227610,
+      "fp": 3,
+      "fn": 64
+    },
+    {
+      "threshold": 0.28,
+      "cost_inr": 2366630,
+      "fp": 1,
+      "fn": 68
+    },
+    {
+      "threshold": 0.5,
+      "cost_inr": 2366536,
+      "fp": 0,
+      "fn": 68
+    }
+  ],
+  "cost_fp": 94,
+  "cost_fn": 34802
+}
